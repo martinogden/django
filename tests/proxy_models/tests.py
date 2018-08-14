@@ -1,5 +1,3 @@
-from __future__ import unicode_literals
-
 from django.contrib import admin
 from django.contrib.auth.models import User as AuthUser
 from django.contrib.contenttypes.models import ContentType
@@ -278,6 +276,13 @@ class ProxyModelTests(TestCase):
         resp = [u.name for u in UserProxy.objects.all()]
         self.assertEqual(resp, ['Bruce'])
 
+    def test_proxy_update(self):
+        user = User.objects.create(name='Bruce')
+        with self.assertNumQueries(1):
+            UserProxy.objects.filter(id=user.id).update(name='George')
+        user.refresh_from_db()
+        self.assertEqual(user.name, 'George')
+
     def test_select_related(self):
         """
         We can still use `select_related()` to include related models in our
@@ -303,14 +308,8 @@ class ProxyModelTests(TestCase):
         issue = Issue.objects.create(assignee=tu)
         self.assertEqual(tu.issues.get(), issue)
         self.assertEqual(ptu.issues.get(), issue)
-        self.assertQuerysetEqual(
-            TrackerUser.objects.filter(issues=issue),
-            [tu], lambda x: x
-        )
-        self.assertQuerysetEqual(
-            ProxyTrackerUser.objects.filter(issues=issue),
-            [ptu], lambda x: x
-        )
+        self.assertSequenceEqual(TrackerUser.objects.filter(issues=issue), [tu])
+        self.assertSequenceEqual(ProxyTrackerUser.objects.filter(issues=issue), [ptu])
 
     def test_proxy_bug(self):
         contributor = ProxyTrackerUser.objects.create(name='Contributor', status='contrib')

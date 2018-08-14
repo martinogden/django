@@ -1,11 +1,10 @@
-import warnings
-
 from django.db.migrations.exceptions import (
     CircularDependencyError, NodeNotFoundError,
 )
-from django.db.migrations.graph import RECURSION_DEPTH_WARNING, MigrationGraph
+from django.db.migrations.graph import (
+    RECURSION_DEPTH_WARNING, DummyNode, MigrationGraph, Node,
+)
 from django.test import SimpleTestCase
-from django.utils.encoding import force_text
 
 
 class GraphTests(SimpleTestCase):
@@ -68,7 +67,7 @@ class GraphTests(SimpleTestCase):
         )
 
     def test_complex_graph(self):
-        """
+        r"""
         Tests a complex dependency graph:
 
         app_a:  0001 <-- 0002 <--- 0003 <-- 0004
@@ -146,7 +145,7 @@ class GraphTests(SimpleTestCase):
         graph.add_dependency("app_b.0001", ("app_b", "0001"), ("app_a", "0003"))
         # Test whole graph
         with self.assertRaises(CircularDependencyError):
-            graph.forwards_plan(("app_a", "0003"), )
+            graph.forwards_plan(("app_a", "0003"))
 
     def test_circular_graph_2(self):
         graph = MigrationGraph()
@@ -192,22 +191,14 @@ class GraphTests(SimpleTestCase):
             expected.append(child)
         leaf = expected[-1]
 
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter('always', RuntimeWarning)
+        with self.assertWarnsMessage(RuntimeWarning, RECURSION_DEPTH_WARNING):
             forwards_plan = graph.forwards_plan(leaf)
 
-        self.assertEqual(len(w), 1)
-        self.assertTrue(issubclass(w[-1].category, RuntimeWarning))
-        self.assertEqual(str(w[-1].message), RECURSION_DEPTH_WARNING)
         self.assertEqual(expected, forwards_plan)
 
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter('always', RuntimeWarning)
+        with self.assertWarnsMessage(RuntimeWarning, RECURSION_DEPTH_WARNING):
             backwards_plan = graph.backwards_plan(root)
 
-        self.assertEqual(len(w), 1)
-        self.assertTrue(issubclass(w[-1].category, RuntimeWarning))
-        self.assertEqual(str(w[-1].message), RECURSION_DEPTH_WARNING)
         self.assertEqual(expected[::-1], backwards_plan)
 
     def test_plan_invalid_node(self):
@@ -285,7 +276,7 @@ class GraphTests(SimpleTestCase):
 
     def test_remove_replaced_nodes(self):
         """
-        Tests that replaced nodes are properly removed and dependencies remapped.
+        Replaced nodes are properly removed and dependencies remapped.
         """
         # Add some dummy nodes to be replaced.
         graph = MigrationGraph()
@@ -328,7 +319,7 @@ class GraphTests(SimpleTestCase):
 
     def test_remove_replacement_node(self):
         """
-        Tests that a replacement node is properly removed and child dependencies remapped.
+        A replacement node is properly removed and child dependencies remapped.
         We assume parent dependencies are already correct.
         """
         # Add some dummy nodes to be replaced.
@@ -395,7 +386,7 @@ class GraphTests(SimpleTestCase):
 
     def test_stringify(self):
         graph = MigrationGraph()
-        self.assertEqual(force_text(graph), "Graph: 0 nodes, 0 edges")
+        self.assertEqual(str(graph), "Graph: 0 nodes, 0 edges")
 
         graph.add_node(("app_a", "0001"), None)
         graph.add_node(("app_a", "0002"), None)
@@ -406,5 +397,30 @@ class GraphTests(SimpleTestCase):
         graph.add_dependency("app_a.0003", ("app_a", "0003"), ("app_a", "0002"))
         graph.add_dependency("app_a.0003", ("app_a", "0003"), ("app_b", "0002"))
 
-        self.assertEqual(force_text(graph), "Graph: 5 nodes, 3 edges")
+        self.assertEqual(str(graph), "Graph: 5 nodes, 3 edges")
         self.assertEqual(repr(graph), "<MigrationGraph: nodes=5, edges=3>")
+
+
+class NodeTests(SimpleTestCase):
+    def test_node_repr(self):
+        node = Node(('app_a', '0001'))
+        self.assertEqual(repr(node), "<Node: ('app_a', '0001')>")
+
+    def test_dummynode_repr(self):
+        node = DummyNode(
+            key=('app_a', '0001'),
+            origin='app_a.0001',
+            error_message='x is missing',
+        )
+        self.assertEqual(repr(node), "<DummyNode: ('app_a', '0001')>")
+
+    def test_dummynode_promote(self):
+        dummy = DummyNode(
+            key=('app_a', '0001'),
+            origin='app_a.0002',
+            error_message="app_a.0001 (req'd by app_a.0002) is missing!",
+        )
+        dummy.promote()
+        self.assertIsInstance(dummy, Node)
+        self.assertFalse(hasattr(dummy, 'origin'))
+        self.assertFalse(hasattr(dummy, 'error_message'))

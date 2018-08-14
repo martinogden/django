@@ -13,7 +13,7 @@ class CurrentTranslation(models.ForeignObject):
         kwargs['related_name'] = '+'
         # Set unique to enable model cache.
         kwargs['unique'] = True
-        super(CurrentTranslation, self).__init__(to, on_delete, from_fields, to_fields, **kwargs)
+        super().__init__(to, on_delete, from_fields, to_fields, **kwargs)
 
 
 class ArticleTranslation(models.Model):
@@ -45,9 +45,15 @@ class IndexTogetherSingleList(models.Model):
     class Meta:
         index_together = ["headline", "pub_date"]
 
+
 # Indexing a TextField on Oracle or MySQL results in index creation error.
 if connection.vendor == 'postgresql':
     class IndexedArticle(models.Model):
         headline = models.CharField(max_length=100, db_index=True)
         body = models.TextField(db_index=True)
         slug = models.CharField(max_length=40, unique=True)
+
+
+class IndexedArticle2(models.Model):
+    headline = models.CharField(max_length=100)
+    body = models.TextField()

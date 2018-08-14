@@ -1,7 +1,5 @@
-# -*- coding: utf-8 -*-
-from __future__ import unicode_literals
-
 import datetime
+from unittest import mock
 
 from django.core.exceptions import ImproperlyConfigured
 from django.test import TestCase, override_settings, skipUnlessDBFeature
@@ -20,7 +18,7 @@ def _make_books(n, base_date):
             pubdate=base_date - datetime.timedelta(days=i))
 
 
-class TestDataMixin(object):
+class TestDataMixin:
 
     @classmethod
     def setUpTestData(cls):
@@ -82,7 +80,11 @@ class ArchiveIndexViewTests(TestDataMixin, TestCase):
         self.assertTemplateUsed(res, 'generic_views/book_detail.html')
 
     def test_archive_view_invalid(self):
-        with self.assertRaises(ImproperlyConfigured):
+        msg = (
+            'BookArchive is missing a QuerySet. Define BookArchive.model, '
+            'BookArchive.queryset, or override BookArchive.get_queryset().'
+        )
+        with self.assertRaisesMessage(ImproperlyConfigured, msg):
             self.client.get('/dates/books/invalid/')
 
     def test_archive_view_by_month(self):
@@ -272,6 +274,22 @@ class YearArchiveViewTests(TestDataMixin, TestCase):
         _make_books(10, base_date=datetime.date(2011, 12, 25))
         res = self.client.get('/dates/books/2011/')
         self.assertEqual(list(res.context['date_list']), list(sorted(res.context['date_list'])))
+
+    @mock.patch('django.views.generic.list.MultipleObjectMixin.get_context_data')
+    def test_get_context_data_receives_extra_context(self, mock):
+        """
+        MultipleObjectMixin.get_context_data() receives the context set by
+        BaseYearArchiveView.get_dated_items(). This behavior is implemented in
+        BaseDateListView.get().
+        """
+        BookSigning.objects.create(event_date=datetime.datetime(2008, 4, 2, 12, 0))
+        with self.assertRaisesMessage(TypeError, 'context must be a dict rather than MagicMock.'):
+            self.client.get('/dates/booksignings/2008/')
+        args, kwargs = mock.call_args
+        # These are context values from get_dated_items().
+        self.assertEqual(kwargs['year'], datetime.date(2008, 1, 1))
+        self.assertIsNone(kwargs['previous_year'])
+        self.assertIsNone(kwargs['next_year'])
 
 
 @override_settings(ROOT_URLCONF='generic_views.urls')
@@ -664,15 +682,30 @@ class DateDetailViewTests(TestDataMixin, TestCase):
         self.assertEqual(res.context['book'], b)
         self.assertTemplateUsed(res, 'generic_views/book_detail.html')
 
+    def test_year_out_of_range(self):
+        urls = [
+            '/dates/books/9999/',
+            '/dates/books/9999/12/',
+            '/dates/books/9999/week/52/',
+        ]
+        for url in urls:
+            with self.subTest(url=url):
+                res = self.client.get(url)
+                self.assertEqual(res.status_code, 404)
+                self.assertEqual(res.context['exception'], 'Date out of range')
+
     def test_invalid_url(self):
-        with self.assertRaises(AttributeError):
+        msg = (
+            'Generic detail view BookDetail must be called with either an '
+            'object pk or a slug in the URLconf.'
+        )
+        with self.assertRaisesMessage(AttributeError, msg):
             self.client.get("/dates/books/2008/oct/01/nopk/")
 
     def test_get_object_custom_queryset(self):
         """
-        Ensure that custom querysets are used when provided to
-        BaseDateDetailView.get_object()
-        Refs #16918.
+        Custom querysets are used when provided to
+        BaseDateDetailView.get_object().
         """
         res = self.client.get(
             '/dates/books/get_object_custom_queryset/2006/may/01/%s/' % self.book2.pk)

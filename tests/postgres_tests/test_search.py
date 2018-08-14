@@ -15,7 +15,7 @@ from . import PostgreSQLTestCase
 from .models import Character, Line, Scene
 
 
-class GrailTestData(object):
+class GrailTestData:
 
     @classmethod
     def setUpTestData(cls):
@@ -125,7 +125,7 @@ class MultipleFieldsTest(GrailTestData, PostgreSQLTestCase):
         searched = Line.objects.annotate(
             search=SearchVector('scene__setting', 'dialogue'),
         ).filter(search='Forest')
-        self.assertSequenceEqual(searched, self.verses)
+        self.assertCountEqual(searched, self.verses)
 
     def test_non_exact_match(self):
         searched = Line.objects.annotate(
@@ -143,7 +143,7 @@ class MultipleFieldsTest(GrailTestData, PostgreSQLTestCase):
         searched = Line.objects.annotate(
             search=SearchVector('character__name', 'dialogue'),
         ).filter(search='minstrel')
-        self.assertSequenceEqual(searched, self.verses)
+        self.assertCountEqual(searched, self.verses)
         searched = Line.objects.annotate(
             search=SearchVector('scene__setting', 'dialogue'),
         ).filter(search='minstrelbravely')
@@ -154,6 +154,12 @@ class MultipleFieldsTest(GrailTestData, PostgreSQLTestCase):
             search=SearchVector('scene__setting', 'dialogue'),
         ).filter(search='bedemir')
         self.assertEqual(set(searched), {self.bedemir0, self.bedemir1, self.crowd, self.witch, self.duck})
+
+    def test_search_with_non_text(self):
+        searched = Line.objects.annotate(
+            search=SearchVector('id'),
+        ).filter(search=str(self.crowd.id))
+        self.assertSequenceEqual(searched, [self.crowd])
 
     def test_config_query_explicit(self):
         searched = Line.objects.annotate(
@@ -205,13 +211,45 @@ class TestCombinations(GrailTestData, PostgreSQLTestCase):
         ).filter(search=SearchQuery('bedemir') & SearchQuery('scales'))
         self.assertSequenceEqual(searched, [self.bedemir0])
 
+    def test_query_multiple_and(self):
+        searched = Line.objects.annotate(
+            search=SearchVector('scene__setting', 'dialogue'),
+        ).filter(search=SearchQuery('bedemir') & SearchQuery('scales') & SearchQuery('nostrils'))
+        self.assertSequenceEqual(searched, [])
+
+        searched = Line.objects.annotate(
+            search=SearchVector('scene__setting', 'dialogue'),
+        ).filter(search=SearchQuery('shall') & SearchQuery('use') & SearchQuery('larger'))
+        self.assertSequenceEqual(searched, [self.bedemir0])
+
     def test_query_or(self):
         searched = Line.objects.filter(dialogue__search=SearchQuery('kneecaps') | SearchQuery('nostrils'))
-        self.assertSequenceEqual(set(searched), {self.verse1, self.verse2})
+        self.assertEqual(set(searched), {self.verse1, self.verse2})
+
+    def test_query_multiple_or(self):
+        searched = Line.objects.filter(
+            dialogue__search=SearchQuery('kneecaps') | SearchQuery('nostrils') | SearchQuery('Sir Robin')
+        )
+        self.assertEqual(set(searched), {self.verse1, self.verse2, self.verse0})
 
     def test_query_invert(self):
         searched = Line.objects.filter(character=self.minstrel, dialogue__search=~SearchQuery('kneecaps'))
         self.assertEqual(set(searched), {self.verse0, self.verse2})
+
+    def test_query_config_mismatch(self):
+        with self.assertRaisesMessage(TypeError, "SearchQuery configs don't match."):
+            Line.objects.filter(
+                dialogue__search=SearchQuery('kneecaps', config='german') |
+                SearchQuery('nostrils', config='english')
+            )
+
+    def test_query_combined_mismatch(self):
+        msg = "SearchQuery can only be combined with other SearchQuerys, got"
+        with self.assertRaisesMessage(TypeError, msg):
+            Line.objects.filter(dialogue__search=None | SearchQuery('kneecaps'))
+
+        with self.assertRaisesMessage(TypeError, msg):
+            Line.objects.filter(dialogue__search=None & SearchQuery('kneecaps'))
 
 
 @modify_settings(INSTALLED_APPS={'append': 'django.contrib.postgres'})

@@ -1,8 +1,5 @@
-from __future__ import unicode_literals
-
 import datetime
 from decimal import Decimal
-from unittest import skipIf
 
 from django.contrib.humanize.templatetags import humanize
 from django.template import Context, Template, defaultfilters
@@ -10,13 +7,7 @@ from django.test import SimpleTestCase, modify_settings, override_settings
 from django.utils import translation
 from django.utils.html import escape
 from django.utils.timezone import get_fixed_timezone, utc
-from django.utils.translation import ugettext as _
-
-try:
-    import pytz
-except ImportError:
-    pytz = None
-
+from django.utils.translation import gettext as _
 
 # Mock out datetime in some tests so they don't fail occasionally when they
 # run too slow. Use a fixed datetime for datetime.now(). DST change in
@@ -174,7 +165,6 @@ class HumanizeTests(SimpleTestCase):
         # As 24h of difference they will never be the same
         self.assertNotEqual(naturalday_one, naturalday_two)
 
-    @skipIf(pytz is None, "this test requires pytz")
     def test_naturalday_uses_localtime(self):
         # Regression for #18504
         # This is 2012-03-08HT19:30:00-06:00 in America/Chicago
@@ -297,5 +287,31 @@ class HumanizeTests(SimpleTestCase):
                 test_time = datetime.datetime.strptime(test_time_string, time_format)
                 natural_time = humanize.naturaltime(test_time).replace('\xa0', ' ')
                 self.assertEqual(expected_natural_time, natural_time)
+        finally:
+            humanize.datetime = orig_humanize_datetime
+
+    def test_dative_inflection_for_timedelta(self):
+        """Translation may differ depending on the string it is inserted in."""
+        test_list = [
+            now - datetime.timedelta(days=1),
+            now - datetime.timedelta(days=2),
+            now - datetime.timedelta(days=30),
+            now - datetime.timedelta(days=60),
+            now - datetime.timedelta(days=500),
+            now - datetime.timedelta(days=865),
+        ]
+        result_list = [
+            'vor 1\xa0Tag',
+            'vor 2\xa0Tagen',
+            'vor 1\xa0Monat',
+            'vor 2\xa0Monaten',
+            'vor 1\xa0Jahr, 4\xa0Monaten',
+            'vor 2\xa0Jahren, 4\xa0Monaten',
+        ]
+
+        orig_humanize_datetime, humanize.datetime = humanize.datetime, MockDateTime
+        try:
+            with translation.override('de'), self.settings(USE_L10N=True):
+                self.humanize_tester(test_list, result_list, 'naturaltime')
         finally:
             humanize.datetime = orig_humanize_datetime

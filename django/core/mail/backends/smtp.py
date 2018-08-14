@@ -1,5 +1,6 @@
 """SMTP email backend class."""
 import smtplib
+import socket
 import ssl
 import threading
 
@@ -7,7 +8,6 @@ from django.conf import settings
 from django.core.mail.backends.base import BaseEmailBackend
 from django.core.mail.message import sanitize_address
 from django.core.mail.utils import DNS_NAME
-from django.utils.encoding import force_str
 
 
 class EmailBackend(BaseEmailBackend):
@@ -18,7 +18,7 @@ class EmailBackend(BaseEmailBackend):
                  use_tls=None, fail_silently=False, use_ssl=None, timeout=None,
                  ssl_keyfile=None, ssl_certfile=None,
                  **kwargs):
-        super(EmailBackend, self).__init__(fail_silently=fail_silently)
+        super().__init__(fail_silently=fail_silently)
         self.host = host or settings.EMAIL_HOST
         self.port = port or settings.EMAIL_PORT
         self.username = settings.EMAIL_HOST_USER if username is None else username
@@ -41,8 +41,9 @@ class EmailBackend(BaseEmailBackend):
 
     def open(self):
         """
-        Ensures we have a connection to the email server. Returns whether or
-        not a new connection was required (True or False).
+        Ensure an open connection to the email server. Return whether or not a
+        new connection was required (True or False) or None if an exception
+        passed silently.
         """
         if self.connection:
             # Nothing to do if the connection is already open.
@@ -64,18 +65,16 @@ class EmailBackend(BaseEmailBackend):
             # TLS/SSL are mutually exclusive, so only attempt TLS over
             # non-secure connections.
             if not self.use_ssl and self.use_tls:
-                self.connection.ehlo()
                 self.connection.starttls(keyfile=self.ssl_keyfile, certfile=self.ssl_certfile)
-                self.connection.ehlo()
             if self.username and self.password:
-                self.connection.login(force_str(self.username), force_str(self.password))
+                self.connection.login(self.username, self.password)
             return True
-        except smtplib.SMTPException:
+        except (smtplib.SMTPException, socket.error):
             if not self.fail_silently:
                 raise
 
     def close(self):
-        """Closes the connection to the email server."""
+        """Close the connection to the email server."""
         if self.connection is None:
             return
         try:
@@ -95,14 +94,14 @@ class EmailBackend(BaseEmailBackend):
 
     def send_messages(self, email_messages):
         """
-        Sends one or more EmailMessage objects and returns the number of email
+        Send one or more EmailMessage objects and return the number of email
         messages sent.
         """
         if not email_messages:
             return
         with self._lock:
             new_conn_created = self.open()
-            if not self.connection:
+            if not self.connection or new_conn_created is None:
                 # We failed silently on open().
                 # Trying to send would be pointless.
                 return

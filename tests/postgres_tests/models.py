@@ -1,14 +1,14 @@
 from django.core.serializers.json import DjangoJSONEncoder
-from django.db import connection, models
+from django.db import models
 
 from .fields import (
-    ArrayField, BigIntegerRangeField, DateRangeField, DateTimeRangeField,
-    FloatRangeField, HStoreField, IntegerRangeField, JSONField,
-    SearchVectorField,
+    ArrayField, BigIntegerRangeField, CICharField, CIEmailField, CITextField,
+    DateRangeField, DateTimeRangeField, FloatRangeField, HStoreField,
+    IntegerRangeField, JSONField, SearchVectorField,
 )
 
 
-class Tag(object):
+class Tag:
     def __init__(self, tag_id):
         self.tag_id = tag_id
 
@@ -18,7 +18,7 @@ class Tag(object):
 
 class TagField(models.SmallIntegerField):
 
-    def from_db_value(self, value, expression, connection, context):
+    def from_db_value(self, value, expression, connection):
         if value is None:
             return value
         return Tag(int(value))
@@ -41,7 +41,7 @@ class PostgreSQLModel(models.Model):
 
 
 class IntegerArrayModel(PostgreSQLModel):
-    field = ArrayField(models.IntegerField())
+    field = ArrayField(models.IntegerField(), default=list, blank=True)
 
 
 class NullableIntegerArrayModel(PostgreSQLModel):
@@ -67,10 +67,14 @@ class OtherTypesArrayModel(PostgreSQLModel):
     uuids = ArrayField(models.UUIDField())
     decimals = ArrayField(models.DecimalField(max_digits=5, decimal_places=2))
     tags = ArrayField(TagField(), blank=True, null=True)
+    json = ArrayField(JSONField(default=dict), default=list)
+    int_ranges = ArrayField(IntegerRangeField(), blank=True, null=True)
+    bigint_ranges = ArrayField(BigIntegerRangeField(), blank=True, null=True)
 
 
 class HStoreModel(PostgreSQLModel):
     field = HStoreField(blank=True, null=True)
+    array_field = ArrayField(HStoreField(), null=True)
 
 
 class CharFieldModel(models.Model):
@@ -96,6 +100,16 @@ class Scene(models.Model):
 
 class Character(models.Model):
     name = models.CharField(max_length=255)
+
+    def __str__(self):
+        return self.name
+
+
+class CITestModel(PostgreSQLModel):
+    name = CICharField(primary_key=True, max_length=255)
+    email = CIEmailField()
+    description = CITextField()
+    array_field = ArrayField(CITextField(), null=True)
 
     def __str__(self):
         return self.name
@@ -129,20 +143,14 @@ class RangeLookupsModel(PostgreSQLModel):
     date = models.DateField(blank=True, null=True)
 
 
-# Only create this model for postgres >= 9.4
-if connection.vendor == 'postgresql' and connection.pg_version >= 90400:
-    class JSONModel(models.Model):
-        field = JSONField(blank=True, null=True)
-        field_custom = JSONField(blank=True, null=True, encoder=DjangoJSONEncoder)
-else:
-    # create an object with this name so we don't have failing imports
-    class JSONModel(object):
-        pass
+class JSONModel(PostgreSQLModel):
+    field = JSONField(blank=True, null=True)
+    field_custom = JSONField(blank=True, null=True, encoder=DjangoJSONEncoder)
 
 
 class ArrayFieldSubclass(ArrayField):
     def __init__(self, *args, **kwargs):
-        super(ArrayFieldSubclass, self).__init__(models.IntegerField())
+        super().__init__(models.IntegerField())
 
 
 class AggregateTestModel(models.Model):
@@ -151,7 +159,7 @@ class AggregateTestModel(models.Model):
     """
     char_field = models.CharField(max_length=30, blank=True)
     integer_field = models.IntegerField(null=True)
-    boolean_field = models.NullBooleanField()
+    boolean_field = models.BooleanField(null=True)
 
 
 class StatTestModel(models.Model):
@@ -165,3 +173,7 @@ class StatTestModel(models.Model):
 
 class NowTestModel(models.Model):
     when = models.DateTimeField(null=True, default=None)
+
+
+class UUIDTestModel(models.Model):
+    uuid = models.UUIDField(default=None, null=True)

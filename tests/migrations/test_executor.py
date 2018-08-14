@@ -126,6 +126,14 @@ class ExecutorTests(MigrationTestBase):
         migrations_apps = executor.loader.project_state(("migrations", "0001_initial")).apps
         Editor = migrations_apps.get_model("migrations", "Editor")
         self.assertFalse(Editor.objects.exists())
+        # Record previous migration as successful.
+        executor.migrate([("migrations", "0001_initial")], fake=True)
+        # Rebuild the graph to reflect the new DB state.
+        executor.loader.build_graph()
+        # Migrating backwards is also atomic.
+        with self.assertRaisesMessage(RuntimeError, "Abort migration"):
+            executor.migrate([("migrations", None)])
+        self.assertFalse(Editor.objects.exists())
 
     @override_settings(MIGRATION_MODULES={
         "migrations": "migrations.test_migrations",
@@ -133,7 +141,7 @@ class ExecutorTests(MigrationTestBase):
     })
     def test_empty_plan(self):
         """
-        Tests that re-planning a full migration of a fully-migrated set doesn't
+        Re-planning a full migration of a fully-migrated set doesn't
         perform spurious unmigrations and remigrations.
 
         There was previously a bug where the executor just always performed the
@@ -404,7 +412,7 @@ class ExecutorTests(MigrationTestBase):
     )
     def test_unrelated_model_lookups_forwards(self):
         """
-        #24123 - Tests that all models of apps already applied which are
+        #24123 - All models of apps already applied which are
         unrelated to the first app being applied are part of the initial model
         state.
         """
@@ -449,7 +457,7 @@ class ExecutorTests(MigrationTestBase):
     )
     def test_unrelated_model_lookups_backwards(self):
         """
-        #24123 - Tests that all models of apps being unapplied which are
+        #24123 - All models of apps being unapplied which are
         unrelated to the first app being unapplied are part of the initial
         model state.
         """
@@ -512,6 +520,9 @@ class ExecutorTests(MigrationTestBase):
             ('mutate_state_a', None),
         ])
         self.assertIn('added', dict(state.models['mutate_state_b', 'b'].fields))
+        executor.migrate([
+            ('mutate_state_b', None),
+        ])
 
     @override_settings(MIGRATION_MODULES={"migrations": "migrations.test_migrations"})
     def test_process_callback(self):
@@ -543,14 +554,14 @@ class ExecutorTests(MigrationTestBase):
 
         migrations = executor.loader.graph.nodes
         expected = [
-            ("render_start", ),
-            ("render_success", ),
+            ("render_start",),
+            ("render_success",),
             ("apply_start", migrations['migrations', '0001_initial'], False),
             ("apply_success", migrations['migrations', '0001_initial'], False),
             ("apply_start", migrations['migrations', '0002_second'], False),
             ("apply_success", migrations['migrations', '0002_second'], False),
-            ("render_start", ),
-            ("render_success", ),
+            ("render_start",),
+            ("render_success",),
             ("unapply_start", migrations['migrations', '0002_second'], False),
             ("unapply_success", migrations['migrations', '0002_second'], False),
             ("unapply_start", migrations['migrations', '0001_initial'], False),
@@ -592,6 +603,7 @@ class ExecutorTests(MigrationTestBase):
                 editor.execute(editor.sql_delete_table % {"table": "author_app_author"})
             self.assertTableNotExists("author_app_author")
             self.assertTableNotExists("book_app_book")
+            executor.migrate([("author_app", None)], fake=True)
 
     @override_settings(MIGRATION_MODULES={"migrations": "migrations.test_migrations_squashed"})
     def test_apply_all_replaced_marks_replacement_as_applied(self):
@@ -638,13 +650,13 @@ class ExecutorTests(MigrationTestBase):
         )
 
 
-class FakeLoader(object):
+class FakeLoader:
     def __init__(self, graph, applied):
         self.graph = graph
         self.applied_migrations = applied
 
 
-class FakeMigration(object):
+class FakeMigration:
     """Really all we need is any object with a debug-useful repr."""
     def __init__(self, name):
         self.name = name
@@ -686,7 +698,7 @@ class ExecutorUnitTests(TestCase):
         self.assertEqual(plan, [(a2_impl, True)])
 
     def test_minimize_rollbacks_branchy(self):
-        """
+        r"""
         Minimize rollbacks when target has multiple in-app children.
 
         a: 1 <---- 3 <--\
@@ -731,7 +743,7 @@ class ExecutorUnitTests(TestCase):
         self.assertEqual(plan, exp)
 
     def test_backwards_nothing_to_do(self):
-        """
+        r"""
         If the current state satisfies the given target, do nothing.
 
         a: 1 <--- 2

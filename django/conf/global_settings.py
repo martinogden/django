@@ -1,15 +1,14 @@
-# -*- coding: utf-8 -*-
 """
 Default Django settings. Override these with settings in the module pointed to
 by the DJANGO_SETTINGS_MODULE environment variable.
 """
-from __future__ import unicode_literals
 
 
 # This is defined here as a do-nothing function because we can't import
 # django.utils.translation -- that module depends on the settings.
 def gettext_noop(s):
     return s
+
 
 ####################
 # CORE             #
@@ -21,9 +20,6 @@ DEBUG = False
 # them. This is useful under some testing situations and should never be used
 # on a live site.
 DEBUG_PROPAGATE_EXCEPTIONS = False
-
-# Whether to use the "Etag" header. This saves bandwidth but slows down performance.
-USE_ETAGS = False
 
 # People who get code error notifications.
 # In the format [('Full Name', 'email@example.com'), ('Full Name', 'anotheremail@example.com')]
@@ -100,6 +96,7 @@ LANGUAGES = [
     ('it', gettext_noop('Italian')),
     ('ja', gettext_noop('Japanese')),
     ('ka', gettext_noop('Georgian')),
+    ('kab', gettext_noop('Kabyle')),
     ('kk', gettext_noop('Kazakh')),
     ('km', gettext_noop('Khmer')),
     ('kn', gettext_noop('Kannada')),
@@ -213,6 +210,9 @@ INSTALLED_APPS = []
 
 TEMPLATES = []
 
+# Default form rendering class.
+FORM_RENDERER = 'django.forms.renderers.DjangoTemplates'
+
 # Default email address to use for various automated correspondence from
 # the site managers.
 DEFAULT_FROM_EMAIL = 'webmaster@localhost'
@@ -238,7 +238,7 @@ FORCE_SCRIPT_NAME = None
 #         re.compile(r'^NaverBot.*'),
 #         re.compile(r'^EmailSiphon.*'),
 #         re.compile(r'^SiteSucker.*'),
-#         re.compile(r'^sohu-search')
+#         re.compile(r'^sohu-search'),
 #     ]
 DISALLOWED_USER_AGENTS = []
 
@@ -249,9 +249,9 @@ ABSOLUTE_URL_OVERRIDES = {}
 #    import re
 #    IGNORABLE_404_URLS = [
 #        re.compile(r'^/apple-touch-icon.*\.png$'),
-#        re.compile(r'^/favicon.ico$),
-#        re.compile(r'^/robots.txt$),
-#        re.compile(r'^/phpmyadmin/),
+#        re.compile(r'^/favicon.ico$'),
+#        re.compile(r'^/robots.txt$'),
+#        re.compile(r'^/phpmyadmin/'),
 #        re.compile(r'\.(cgi|php|pl)$'),
 #    ]
 IGNORABLE_404_URLS = []
@@ -441,12 +441,7 @@ SECURE_PROXY_SSL_HEADER = None
 # List of middleware to use. Order is important; in the request phase, these
 # middleware will be applied in the order given, and in the response
 # phase the middleware will be applied in reverse order.
-MIDDLEWARE_CLASSES = [
-    'django.middleware.common.CommonMiddleware',
-    'django.middleware.csrf.CsrfViewMiddleware',
-]
-
-MIDDLEWARE = None
+MIDDLEWARE = []
 
 ############
 # SESSIONS #
@@ -458,7 +453,7 @@ SESSION_CACHE_ALIAS = 'default'
 SESSION_COOKIE_NAME = 'sessionid'
 # Age of cookie, in seconds (default: 2 weeks).
 SESSION_COOKIE_AGE = 60 * 60 * 24 * 7 * 2
-# A string like ".example.com", or None for standard domain cookie.
+# A string like "example.com", or None for standard domain cookie.
 SESSION_COOKIE_DOMAIN = None
 # Whether the session cookie should be secure (https:// only).
 SESSION_COOKIE_SECURE = False
@@ -466,6 +461,9 @@ SESSION_COOKIE_SECURE = False
 SESSION_COOKIE_PATH = '/'
 # Whether to use the non-RFC standard httpOnly flag (IE, FF3+, others)
 SESSION_COOKIE_HTTPONLY = True
+# Whether to set the flag restricting cookie leaks on cross-site requests.
+# This can be 'Lax', 'Strict', or None to disable the flag.
+SESSION_COOKIE_SAMESITE = 'Lax'
 # Whether to save the session data on every request.
 SESSION_SAVE_EVERY_REQUEST = False
 # Whether a user's session cookie expires when the Web browser is closed.
@@ -517,7 +515,6 @@ PASSWORD_HASHERS = [
     'django.contrib.auth.hashers.PBKDF2SHA1PasswordHasher',
     'django.contrib.auth.hashers.Argon2PasswordHasher',
     'django.contrib.auth.hashers.BCryptSHA256PasswordHasher',
-    'django.contrib.auth.hashers.BCryptPasswordHasher',
 ]
 
 AUTH_PASSWORD_VALIDATORS = []
@@ -543,8 +540,10 @@ CSRF_COOKIE_DOMAIN = None
 CSRF_COOKIE_PATH = '/'
 CSRF_COOKIE_SECURE = False
 CSRF_COOKIE_HTTPONLY = False
+CSRF_COOKIE_SAMESITE = 'Lax'
 CSRF_HEADER_NAME = 'HTTP_X_CSRFTOKEN'
 CSRF_TRUSTED_ORIGINS = []
+CSRF_USE_SESSIONS = False
 
 ############
 # MESSAGES #
